@@ -78,6 +78,19 @@ button{font-family:var(--sans);cursor:pointer}
 .book.dim{opacity:.13;filter:grayscale(.6)}
 .book .lockmark{position:absolute;right:-6px;top:-8px;font-size:13px;filter:drop-shadow(0 1px 2px #000)}
 .book.private .cover{opacity:.82;border-style:dashed}
+.seriesbook .stack{position:absolute;left:0;top:0;width:100%;height:100%;border-radius:3px 7px 7px 3px;
+  background:linear-gradient(160deg,#2a3158,#151b38);border:1px solid rgba(255,255,255,.12);box-shadow:0 5px 18px rgba(0,0,0,.45)}
+.seriesbook .stack.s1{transform:translate(5px,-5px) rotate(1.6deg)}
+.seriesbook .stack.s2{transform:translate(10px,-10px) rotate(3.2deg)}
+.epband{writing-mode:horizontal-tb!important;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#cbbaf2,#a894dd)!important;color:#241640!important;
+  font-size:9px!important;letter-spacing:.12em;font-family:var(--sans)!important}
+.epn{color:var(--gold);font-size:.85em;margin-right:4px;white-space:nowrap}
+.eplist{margin-top:14px}
+.rjump{writing-mode:horizontal-tb;display:flex;flex-direction:column;gap:12px;align-items:stretch;margin:2.5em 0 0;max-width:340px}
+.rjump .pbtn{text-align:center}
+.rend{color:var(--muted);font-size:.75em;text-align:center;letter-spacing:.2em;padding:8px 0}
+#reader.rv .rjump{margin:0;margin-block-start:2em;align-self:center}
 
 #empty{position:fixed;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;text-align:center;
   color:var(--muted);font-size:14px;line-height:2;pointer-events:none;padding:0 24px}
@@ -289,6 +302,7 @@ function matchBook(b,q){
   if(!q) return true;
   var score = 0;
   score += 5*fuzzyHit(q,norm(b.title));
+  score += 4*fuzzyHit(q,norm(b.series));
   score += 4*fuzzyHit(q,norm((b.tags||[]).join(' ')));
   score += 2*fuzzyHit(q,norm(b.synopsis));
   score += 1*fuzzyHit(q,norm(b.body));
@@ -331,6 +345,18 @@ var SYN_COLORS = [
 ];
 function synClass(b){ return 'f-'+(b.synFont||'gothic'); }
 function synStyle(b){ return b.synColor ? ' style="color:'+esc(b.synColor)+'"' : ''; }
+
+/* ===== 連載 ===== */
+function seriesNames(){ var s=[]; state.books.forEach(function(b){ if(b.series && s.indexOf(b.series)<0) s.push(b.series); }); return s; }
+function epSort(a,b){
+  var an=(a.epno==null), bn=(b.epno==null);
+  if(!an && !bn && a.epno!==b.epno) return a.epno-b.epno;
+  if(an!==bn) return an?1:-1;
+  var d=(a.date||'').localeCompare(b.date||'');
+  return d || (a.title||'').localeCompare(b.title||'');
+}
+function seriesEpisodes(name){ return visibleBooks().filter(function(b){ return b.series===name; }).sort(epSort); }
+function epLabel(b){ return b.epno!=null ? '第'+b.epno+'話' : ''; }
 
 /* ===== 保存（このページ自身を新しい版として発行） ===== */
 function buildDocument(st){
@@ -489,18 +515,39 @@ function layout(books){
 }
 function renderSpace(){
   var space=document.getElementById('space');
-  var books=visibleBooks(), pos=layout(books);
+  var vis=visibleBooks(), items=[], groups={};
+  vis.forEach(function(b){
+    if(b.series){
+      if(!groups[b.series]){ groups[b.series]={name:b.series, eps:[]}; items.push({type:'series', g:groups[b.series], key:'S:'+b.series}); }
+      groups[b.series].eps.push(b);
+    } else items.push({type:'book', b:b, key:b.id});
+  });
+  var pos=layout(items.map(function(it){ return {id:it.key}; }));
   var html='';
-  for(var i=0;i<books.length;i++){
-    var b=books[i], h=hash01(b.id+'a');
-    html+='<button class="book'+(b.public?'':' private')+'" data-id="'+esc(b.id)+'" style="left:'+pos[i].x.toFixed(2)+'%;top:'+pos[i].y.toFixed(2)+'%;--dur:'+(6+h*5).toFixed(1)+'s;--delay:-'+(h*8).toFixed(1)+'s;--amp:'+(6+h*7).toFixed(0)+'px;--tilt:'+((h-0.5)*7).toFixed(1)+'deg">'
-      + '<span class="halo"></span>'
-      + '<span class="cover'+(b.obi?' hasobi':'')+'" style="background:'+coverCss(b)+'"><span class="bt">'+esc(b.title)+'</span>'
-      + (b.obi?'<span class="obiband">'+esc(b.obi)+'</span>':'')+'</span>'
-      + (b.public?'':'<span class="lockmark">🔒</span>')
-      + '</button>';
+  for(var i=0;i<items.length;i++){
+    var it=items[i], h=hash01(it.key+'a');
+    var st='left:'+pos[i].x.toFixed(2)+'%;top:'+pos[i].y.toFixed(2)+'%;--dur:'+(6+h*5).toFixed(1)+'s;--delay:-'+(h*8).toFixed(1)+'s;--amp:'+(6+h*7).toFixed(0)+'px;--tilt:'+((h-0.5)*7).toFixed(1)+'deg';
+    if(it.type==='book'){
+      var b=it.b;
+      html+='<button class="book'+(b.public?'':' private')+'" data-id="'+esc(b.id)+'" style="'+st+'">'
+        + '<span class="halo"></span>'
+        + '<span class="cover'+(b.obi?' hasobi':'')+'" style="background:'+coverCss(b)+'"><span class="bt">'+esc(b.title)+'</span>'
+        + (b.obi?'<span class="obiband">'+esc(b.obi)+'</span>':'')+'</span>'
+        + (b.public?'':'<span class="lockmark">🔒</span>')
+        + '</button>';
+    }else{
+      var eps=it.g.eps.slice().sort(epSort), allPriv=eps.every(function(e){return !e.public;});
+      html+='<button class="book seriesbook'+(allPriv?' private':'')+'" data-series="'+esc(it.g.name)+'" style="'+st+'">'
+        + '<span class="halo"></span>'
+        + '<span class="stack s2"></span><span class="stack s1"></span>'
+        + '<span class="cover hasobi" style="background:'+coverCss(eps[0])+'"><span class="bt">'+esc(it.g.name)+'</span>'
+        + '<span class="obiband epband">全'+eps.length+'話</span></span>'
+        + (allPriv?'<span class="lockmark">🔒</span>':'')
+        + '</button>';
+    }
   }
   space.innerHTML=html;
+  var books=vis;
   var empty=document.getElementById('empty');
   if(books.length===0){
     empty.hidden=false;
@@ -514,7 +561,14 @@ function applySearch(){
   var q=norm(query), hint=document.getElementById('hint'), nHit=0;
   var nodes=document.getElementById('space').children;
   for(var i=0;i<nodes.length;i++){
-    var el=nodes[i], b=findBook(el.dataset.id), hit=matchBook(b,q);
+    var el=nodes[i], hit;
+    if(el.dataset.series){
+      var sn=el.dataset.series;
+      hit = fuzzyHit(q,norm(sn))>0 || seriesEpisodes(sn).some(function(b){ return matchBook(b,q); });
+      if(!q) hit=true;
+    }else{
+      var b=findBook(el.dataset.id); hit = b ? matchBook(b,q) : false;
+    }
     el.classList.toggle('hit', !!q && hit);
     el.classList.toggle('dim', !!q && !hit);
     if(q&&hit) nHit++;
@@ -532,12 +586,31 @@ function renderList(){
     .slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
   if(books.length===0){ rows.innerHTML='<div style="padding:20px;color:var(--muted);font-size:13px">該当する本がありません</div>'; return; }
   rows.innerHTML=books.map(function(b){
-    return '<button class="lrow" data-id="'+esc(b.id)+'"><div class="lt">'+esc(b.title)+'</div>'
+    return '<button class="lrow" data-id="'+esc(b.id)+'"><div class="lt">'+(b.series&&b.epno!=null?'<span class="epn">第'+b.epno+'話</span>':'')+esc(b.title)+'</div>'
       + '<div class="lm"><span>'+esc(fmtDate(b.date)||'日付なし')+'</span>'
+      + (b.series?'<span>連載『'+esc(b.series)+'』</span>':'')
       + ((b.tags&&b.tags.length)?'<span>'+esc(b.tags.join(' / '))+'</span>':'')
       + (b.public?'':'<span class="priv">🔒 非公開</span>')
       + '</div></button>';
   }).join('');
+}
+
+/* ===== 連載の目次 ===== */
+function openSeries(name){
+  var eps=seriesEpisodes(name); if(!eps.length) return;
+  var d=document.getElementById('detail');
+  d.innerHTML =
+    '<div class="xrow"><button class="xbtn" data-act="close">✕</button></div>'
+  + '<h2>'+esc(name)+'<span class="badge pub">連載・全'+eps.length+'話</span></h2>'
+  + '<div class="eplist">'+eps.map(function(b){
+      return '<button class="lrow" data-id="'+esc(b.id)+'"><div class="lt">'
+        + (b.epno!=null?'<span class="epn">第'+b.epno+'話</span>':'')+esc(b.title)+'</div>'
+        + '<div class="lm"><span>'+esc(fmtDate(b.date)||'')+'</span>'
+        + (b.public?'':'<span class="priv">🔒 非公開</span>')
+        + '</div></button>';
+    }).join('')+'</div>';
+  d.dataset.id='';
+  document.getElementById('detailov').hidden=false;
 }
 
 /* ===== 詳細 ===== */
@@ -553,6 +626,7 @@ function openDetail(id){
   +     (ownerMode ? (b.public?'<span class="badge pub">公開</span>':'<span class="badge priv">🔒 非公開</span>') : '')
   +   '</h2>'
   +   '<div class="ddate">'+(b.date?esc(fmtDate(b.date))+' に書いた物語':'')+'</div>'
+  +   (b.series?'<div class="ddate">連載『'+esc(b.series)+'』'+(b.epno!=null?'　第'+b.epno+'話':'')+'</div>':'')
   +   ((b.tags&&b.tags.length)?'<div class="tags">'+b.tags.map(function(t){return '<span class="tag">'+esc(t)+'</span>';}).join('')+'</div>':'')
   +   '</div></div>'
   + (b.obi ? '<div class="obi">'+esc(b.obi)+'</div>' : '')
@@ -560,6 +634,7 @@ function openDetail(id){
   + ((ownerMode && b.memo) ? '<div class="memo"><div class="ml">じぶんメモ（ぬしにだけ見えます）</div><div class="mtext">'+esc(b.memo)+'</div></div>' : '')
   + '<div class="dbtns">'
   +   (b.body ? '<button class="pbtn main" data-act="read">読む</button>' : '')
+  +   (b.series ? '<button class="pbtn" data-act="backseries">連載の目次</button>' : '')
   +   (ownerMode ? '<button class="pbtn" data-act="edit">編集</button>'
                  + '<button class="pbtn" data-act="togglepub">'+(b.public?'非公開にする':'公開する')+'</button>'
                  + '<button class="pbtn warn" data-act="del">削除</button>' : '')
@@ -599,6 +674,17 @@ function openReader(id){
   try{ fs=localStorage.getItem('mg_fs')||'m'; rm=localStorage.getItem('mg_rmode')||'v'; }catch(e){}
   r.className='fs-'+fs+' r'+rm;
   var paras=String(b.body).split(/\n/).map(function(ln){ return ln.trim()==='' ? '' : '<p>'+esc(ln)+'</p>'; }).join('');
+  var jump='';
+  if(b.series){
+    var eps=seriesEpisodes(b.series), idx=-1;
+    for(var i=0;i<eps.length;i++) if(eps[i].id===b.id) idx=i;
+    var pb=idx>0?eps[idx-1]:null, nb=(idx>=0&&idx<eps.length-1)?eps[idx+1]:null;
+    jump='<div class="rjump">'
+      + (nb&&nb.body ? '<button class="pbtn main" data-ep="'+esc(nb.id)+'">つぎの話へ ▶ '+(nb.epno!=null?'第'+nb.epno+'話　':'')+esc(nb.title)+'</button>'
+                     : '<div class="rend">— 『'+esc(b.series)+'』は、ここまで —</div>')
+      + (pb&&pb.body ? '<button class="pbtn" data-ep="'+esc(pb.id)+'">◀ まえの話にもどる</button>' : '')
+      + '</div>';
+  }
   r.innerHTML =
     '<div id="rbar"><button class="tbtn" id="rback">← 本棚にもどる</button>'
   + '<div id="rops">'
@@ -612,7 +698,7 @@ function openReader(id){
   +     '<button class="fsbtn'+(fs==='l'?' sel':'')+'" data-fs="l">大</button>'
   +   '</div>'
   + '</div></div>'
-  + '<div id="rscroll"><article id="rbody"><h1>'+esc(b.title)+'</h1><div class="rdate">'+esc(fmtDate(b.date))+'</div><div class="rtext">'+paras+'</div></article></div>'
+  + '<div id="rscroll"><article id="rbody"><h1>'+(b.series&&b.epno!=null?'<span class="epn">第'+b.epno+'話</span> ':'')+esc(b.title)+'</h1><div class="rdate">'+esc(fmtDate(b.date))+(b.series?'　『'+esc(b.series)+'』':'')+'</div><div class="rtext">'+paras+'</div>'+jump+'</article></div>'
   + '<div id="rnav"><button class="pgbtn" data-pg="1">‹ つぎへ</button><span id="pgind"></span><button class="pgbtn" data-pg="-1">まえへ ›</button></div>';
   r.hidden=false; r.scrollTop=0;
   var sc=document.getElementById('rscroll');
@@ -627,13 +713,15 @@ function openReader(id){
 /* ===== 追加・編集フォーム ===== */
 function openForm(id){
   editingId=id||null;
-  var b = id ? findBook(id) : {title:'',date:new Date().toISOString().slice(0,10),tags:[],synopsis:'',obi:'',body:'',memo:'',public:false,color:Math.floor(Math.random()*COVERS.length),synFont:'gothic',synColor:''};
+  var b = id ? findBook(id) : {title:'',date:new Date().toISOString().slice(0,10),tags:[],series:'',epno:null,synopsis:'',obi:'',body:'',memo:'',public:false,color:Math.floor(Math.random()*COVERS.length),synFont:'gothic',synColor:''};
   var f=document.getElementById('formsheet');
   f.innerHTML =
     '<div class="xrow"><button class="xbtn" data-act="close">✕</button></div>'
   + '<h2>'+(id?'本を編集':'新しい本を浮かべる')+'</h2>'
   + '<div class="field"><label>タイトル（必須）</label><input type="text" id="f_title" value="'+esc(b.title)+'" maxlength="60"></div>'
   + '<div class="field"><label>書いた日</label><input type="date" id="f_date" value="'+esc(b.date||'')+'"></div>'
+  + '<div class="field"><label>連載名（連載の一話なら。単発の本は空欄でOK）</label><input type="text" id="f_series" list="serieslist" value="'+esc(b.series||'')+'" maxlength="40" placeholder="れい：星のかけら綺譚"><datalist id="serieslist">'+seriesNames().map(function(s){return '<option value="'+esc(s)+'">';}).join('')+'</datalist></div>'
+  + '<div class="field"><label>なん話目？（数字だけ。連載のときに）</label><input type="text" id="f_epno" inputmode="numeric" value="'+(b.epno!=null?b.epno:'')+'" placeholder="1"></div>'
   + '<div class="field"><label>タグ（読点・カンマ・スペースで区切り）</label><input type="text" id="f_tags" value="'+esc((b.tags||[]).join('、'))+'" placeholder="れい：ファンタジー、短編、連載中"></div>'
   + '<div class="field"><label>あらすじ</label><textarea id="f_syn" rows="3">'+esc(b.synopsis)+'</textarea></div>'
   + '<div class="field"><label>あらすじの書体</label><div class="fchips">'+SYN_FONTS.map(function(f){
@@ -666,6 +754,8 @@ function submitForm(){
     title:title,
     date:g('f_date').value||'',
     tags:g('f_tags').value.split(/[、,，\s]+/).map(function(s){return s.trim();}).filter(Boolean).slice(0,8),
+    series:g('f_series').value.trim(),
+    epno:(function(v){ v=v.trim().normalize('NFKC'); return v!=='' && !isNaN(+v) ? +v : null; })(g('f_epno').value),
     synopsis:g('f_syn').value.trim(),
     synFont: fcSel ? fcSel.dataset.f : 'gothic',
     synColor: cdSel ? cdSel.dataset.col : '',
@@ -754,7 +844,9 @@ function renderAll(){ updateBar(); renderSpace(); if(!document.getElementById('l
 document.addEventListener('click', function(ev){
   var t=ev.target;
   var bookEl=t.closest && t.closest('.book');
-  if(bookEl){ openDetail(bookEl.dataset.id); return; }
+  if(bookEl){ if(bookEl.dataset.series) openSeries(bookEl.dataset.series); else openDetail(bookEl.dataset.id); return; }
+  var epb=t.closest && t.closest('[data-ep]');
+  if(epb){ openReader(epb.dataset.ep); return; }
   var lrow=t.closest && t.closest('.lrow');
   if(lrow){ document.getElementById('listpanel').hidden=true; openDetail(lrow.dataset.id); return; }
 
@@ -797,6 +889,7 @@ document.addEventListener('click', function(ev){
     var id=document.getElementById('detail').dataset.id, b=findBook(id);
     if(!b) return;
     if(a==='read'){ document.getElementById('detailov').hidden=true; openReader(id); return; }
+    if(a==='backseries'){ openSeries(b.series); return; }
     if(a==='edit'){ document.getElementById('detailov').hidden=true; openForm(id); return; }
     if(a==='togglepub'){ b.public=!b.public; markDirty(); document.getElementById('detailov').hidden=true; renderAll(); toast(b.public?'「公開」にしたよ':'「非公開」にしたよ（保存を忘れずに）'); return; }
     if(a==='del'){
